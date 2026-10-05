@@ -51,6 +51,9 @@ export async function POST(request: Request) {
 
     const payload = (await response.json()) as {
       output_text?: string
+      output?: Array<{
+        content?: Array<{ type?: string; text?: string }>
+      }>
       error?: { message?: string }
       id?: string
       model?: string
@@ -63,8 +66,14 @@ export async function POST(request: Request) {
       )
     }
 
+    const outputText = payload.output_text ?? payload.output
+      ?.flatMap((item) => item.content ?? [])
+      .filter((item) => item.type === "output_text" && item.text)
+      .map((item) => item.text)
+      .join("\n")
+
     return Response.json({
-      text: payload.output_text ?? "模型没有返回文本。",
+      text: outputText || "模型没有返回文本。",
       responseId: payload.id ?? null,
       model: payload.model ?? model,
     })
