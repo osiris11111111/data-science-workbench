@@ -6,7 +6,7 @@ type RequestBody = {
 }
 
 export async function POST(request: Request) {
-  const apiKey = env.OPENAI_API_KEY?.trim()
+  const apiKey = (env.OPENAI_API_KEY ?? process.env.OPENAI_API_KEY)?.trim()
   if (!apiKey) {
     return Response.json(
       {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   }
 
   const context = JSON.stringify(body.context ?? {}).slice(0, 50000)
-  const model = env.OPENAI_MODEL?.trim() || "gpt-5.5"
+  const model = (env.OPENAI_MODEL ?? process.env.OPENAI_MODEL)?.trim() || "gpt-5.5"
 
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
