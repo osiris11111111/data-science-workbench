@@ -36,13 +36,14 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.dummy import DummyRegressor, DummyClassifier
-from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, HistGradientBoostingRegressor, HistGradientBoostingClassifier
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, balanced_accuracy_score, f1_score
 
 payload = json.loads(payload_json)
 task = payload["task"]
 target = payload["target"]
+model_choice = payload.get("modelChoice", "auto")
 seed = int(payload.get("seed", 42))
 original_rows = int(payload.get("originalRows", len(payload["rows"])))
 df = pd.DataFrame(payload["rows"])
@@ -156,19 +157,27 @@ def evaluate(name, estimator):
 if task == "classification":
     baseline_result, _ = evaluate("多数类基线", DummyClassifier(strategy="most_frequent"))
     model_specs = [
-        ("逻辑回归", LogisticRegression(max_iter=1000, random_state=seed)),
-        ("随机森林", RandomForestClassifier(n_estimators=120, max_depth=10, min_samples_leaf=2, random_state=seed, n_jobs=1)),
+        ("logistic_regression", "逻辑回归", LogisticRegression(max_iter=1000, random_state=seed)),
+        ("random_forest", "随机森林分类", RandomForestClassifier(n_estimators=120, max_depth=10, min_samples_leaf=2, random_state=seed, n_jobs=1)),
+        ("gradient_boosting", "梯度提升分类", HistGradientBoostingClassifier(max_iter=120, learning_rate=0.08, max_leaf_nodes=15, random_state=seed)),
     ]
 else:
     baseline_result, _ = evaluate("均值基线", DummyRegressor(strategy="mean"))
     model_specs = [
-        ("线性回归", LinearRegression()),
-        ("随机森林", RandomForestRegressor(n_estimators=120, max_depth=10, min_samples_leaf=2, random_state=seed, n_jobs=1)),
+        ("linear_regression", "线性回归" if task == "regression" else "线性趋势回归", LinearRegression()),
+        ("ridge", "岭回归" if task == "regression" else "岭回归趋势", Ridge(alpha=1.0)),
+        ("random_forest", "随机森林回归" if task == "regression" else "随机森林预测", RandomForestRegressor(n_estimators=120, max_depth=10, min_samples_leaf=2, random_state=seed, n_jobs=1)),
+        ("gradient_boosting", "梯度提升回归" if task == "regression" else "梯度提升预测", HistGradientBoostingRegressor(max_iter=120, learning_rate=0.08, max_leaf_nodes=15, random_state=seed)),
     ]
+
+if model_choice != "auto":
+    model_specs = [spec for spec in model_specs if spec[0] == model_choice]
+    if not model_specs:
+        raise ValueError(f"模型 {model_choice} 不支持当前任务类型")
 
 candidates = []
 pipelines = {}
-for name, estimator in model_specs:
+for _, name, estimator in model_specs:
     candidate, fitted = evaluate(name, estimator)
     candidates.append(candidate)
     pipelines[name] = fitted
@@ -204,6 +213,7 @@ else:
 result = {
     "task": task,
     "target": target,
+    "selectionMode": "auto" if model_choice == "auto" else "manual",
     "rowsUsed": int(len(X)),
     "trainRows": int(len(X_train)),
     "testRows": int(len(X_test)),

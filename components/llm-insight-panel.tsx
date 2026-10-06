@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { BrainCircuit, Loader2, Sparkles } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
 type Props = {
@@ -38,34 +37,32 @@ export function LlmInsightPanel({ prompt, context }: Props) {
   }
 
   return (
-    <div className="border border-violet-400/15 bg-violet-400/5 p-4">
+    <section className="mx-3 mb-3 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-violet-200">
+        <div className="flex items-center gap-2 px-3 pt-3 text-sm font-semibold text-slate-800">
           <BrainCircuit className="size-4" /> LLM 深度解读
         </div>
-        <Badge variant="outline" className="border-violet-400/20 text-[10px] text-violet-300">
-          SERVER API
-        </Badge>
+        <span className="mr-3 mt-3 text-[10px] text-slate-400">服务端</span>
       </div>
-      <p className="mt-2 text-xs leading-5 text-slate-500">
+      <p className="px-3 pt-2 text-xs leading-5 text-slate-500">
         只向服务端发送字段画像和统计摘要，不发送完整数据集。
       </p>
       {answer ? (
-        <div className="mt-3 whitespace-pre-wrap border border-white/8 bg-black/15 p-3 text-sm leading-6 text-slate-300">
+        <div className="mx-3 mt-3 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700">
           {answer}
-          {model ? <div className="mt-3 text-[11px] text-slate-600">模型：{model}</div> : null}
+          {model ? <div className="mt-3 text-[11px] text-slate-400">模型：{model}</div> : null}
         </div>
       ) : null}
-      {error ? <div className="mt-3 border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-5 text-amber-200">{error}</div> : null}
+      {error ? <div className="mx-3 mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-700">{error}</div> : null}
       <Button
         onClick={askLlm}
         disabled={loading}
         variant="outline"
-        className="mt-3 w-full border-violet-400/25 bg-violet-400/8 text-violet-100 hover:bg-violet-400/15 hover:text-white"
+        className="m-3 w-[calc(100%_-_1.5rem)] border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
       >
         {loading ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
         {loading ? "正在分析" : answer ? "重新解读" : "调用 LLM"}
       </Button>
-    </div>
+    </section>
   )
 }
