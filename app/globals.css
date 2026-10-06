@@ -160,7 +160,9 @@ button, a, input, select, textarea { outline-offset: 2px; }
 .workspace-tab-list {
   height: 40px;
   justify-content: flex-start;
-  gap: 18px;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 1px solid #dfe3e8;
   border-radius: 0;
   background: transparent;
@@ -208,6 +210,16 @@ button, a, input, select, textarea { outline-offset: 2px; }
 .prompt-chip:hover { border-color: #9dbcf6; background: #f5f9ff; color: #1d4ed8; }
 .status-dot { display: inline-flex; align-items: center; gap: 5px; color: #64748b; font-size: 11px; }
 .status-dot span { width: 6px; height: 6px; border-radius: 50%; background: #22a06b; }
+.cleaning-summary { display: grid; min-height: 72px; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; gap: 10px; border-bottom: 1px solid #e7eaee; background: #fbfcfd; padding: 12px 16px; }
+.cleaning-summary > svg { display: none; }
+.cleaning-summary > div { min-width: 0; }
+.cleaning-summary span { display: block; color: #8a94a4; font-size: 11px; }
+.cleaning-summary strong { display: block; margin-top: 4px; color: #334155; font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.cleaning-step { display: flex; min-height: 66px; align-items: center; gap: 12px; padding: 10px 14px; }
+.cleaning-step:hover { background: #fbfcfd; }
+.cleaning-index { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border-radius: 50%; background: #eaf1ff; color: #1d4ed8; font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.icon-button { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border-radius: 6px; color: #94a3b8; }
+.icon-button:hover { background: #fee2e2; color: #dc2626; }
 
 @media (max-width: 1280px) {
   .workbench-grid { grid-template-columns: 220px minmax(0, 1fr) 300px; }

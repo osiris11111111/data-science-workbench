@@ -38,7 +38,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.dummy import DummyRegressor, DummyClassifier
 from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, HistGradientBoostingRegressor, HistGradientBoostingClassifier
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, balanced_accuracy_score, f1_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, balanced_accuracy_score, f1_score, confusion_matrix
 
 payload = json.loads(payload_json)
 task = payload["task"]
@@ -188,6 +188,7 @@ else:
     best = min(candidates, key=lambda item: item["metrics"]["mae"])
 
 best_pipeline = pipelines[best["name"]]
+best_prediction = best_pipeline.predict(X_test)
 feature_names = best_pipeline.named_steps["prep"].get_feature_names_out()
 model = best_pipeline.named_steps["model"]
 importance = None
@@ -202,6 +203,36 @@ if importance is not None and len(importance) == len(feature_names):
     normalizer = float(np.max(np.abs(importance))) or 1.0
     ranked = sorted(zip(feature_names, importance), key=lambda item: abs(float(item[1])), reverse=True)[:10]
     top_features = [{"name": str(name), "importance": clean_number(abs(value) / normalizer)} for name, value in ranked]
+
+if task == "classification":
+    actual_labels = pd.Series(y_test).astype(str).reset_index(drop=True)
+    predicted_labels = pd.Series(best_prediction).astype(str).reset_index(drop=True)
+    label_values = sorted(set(actual_labels.tolist()) | set(predicted_labels.tolist()))
+    if len(label_values) > 8:
+        top_labels = actual_labels.value_counts().head(7).index.tolist()
+        actual_labels = actual_labels.where(actual_labels.isin(top_labels), "其他")
+        predicted_labels = predicted_labels.where(predicted_labels.isin(top_labels), "其他")
+        label_values = top_labels + ["其他"]
+    matrix = confusion_matrix(actual_labels, predicted_labels, labels=label_values)
+    diagnostics = {
+        "kind": "classification",
+        "labels": [str(value) for value in label_values],
+        "matrix": matrix.astype(int).tolist(),
+        "actual": actual_labels.head(200).tolist(),
+        "predicted": predicted_labels.head(200).tolist(),
+    }
+else:
+    actual_values = np.asarray(y_test, dtype=float)
+    predicted_values = np.asarray(best_prediction, dtype=float)
+    residual_values = actual_values - predicted_values
+    diagnostics = {
+        "kind": "regression",
+        "actual": [clean_number(value) for value in actual_values[:200]],
+        "predicted": [clean_number(value) for value in predicted_values[:200]],
+        "residuals": [clean_number(value) for value in residual_values[:200]],
+        "residualMean": clean_number(np.mean(residual_values)),
+        "residualStd": clean_number(np.std(residual_values)),
+    }
 
 if len(X_test) < 20:
     warnings.append("测试集少于 20 行，指标波动可能很大；请把结果视为演示性证据。")
@@ -223,6 +254,7 @@ result = {
     "best": best,
     "candidates": candidates,
     "topFeatures": top_features,
+    "diagnostics": diagnostics,
     "versions": {"python": sys.version.split()[0], "sklearn": sklearn.__version__, "pandas": pd.__version__},
     "warnings": warnings,
 }

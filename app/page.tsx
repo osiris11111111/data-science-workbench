@@ -2,7 +2,7 @@
 
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react"
 import * as XLSX from "xlsx"
-import { AreaChart, ArrowDownToLine, BarChart3, BrainCircuit, Check, ChevronRight, CircleAlert, Database, FileSpreadsheet, FlaskConical, LineChart as LineChartIcon, Loader2, Play, ShieldCheck, Sparkles, Table2, UploadCloud, WandSparkles } from "lucide-react"
+import { AreaChart, ArrowDownToLine, BarChart3, BrainCircuit, Check, ChevronRight, CircleAlert, Database, FileSpreadsheet, FlaskConical, LineChart as LineChartIcon, ListChecks, Loader2, Play, RotateCcw, ShieldCheck, Sparkles, Trash2, Undo2, UploadCloud, WandSparkles } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { LlmInsightPanel } from "@/components/llm-insight-panel"
-import { PythonModelLab } from "@/components/python-model-lab"
+import { PythonModelLab, type ExperimentRecord } from "@/components/python-model-lab"
 import { MODEL_OPTIONS, modelLabel, type ModelChoice, type ModelTask } from "@/lib/model-catalog"
 
 type Cell = string | number | boolean | null
@@ -24,6 +24,8 @@ type ColumnKind = "number" | "date" | "category" | "boolean"
 type ColumnProfile = { name: string; kind: ColumnKind; missing: number; unique: number; min?: number; max?: number; mean?: number }
 type Profile = { rows: number; columns: number; missingCells: number; duplicateRows: number; numericColumns: number; columnProfiles: ColumnProfile[] }
 type AnalysisResult = { title: string; summary: string; bullets: string[]; method: string; confidence: string }
+type CleaningType = "drop_duplicates" | "trim_text" | "drop_missing" | "fill_missing" | "clip_outliers"
+type CleaningOperation = { id: string; type: CleaningType; label: string; column?: string; strategy?: "mean" | "median" | "mode" }
 
 const demoRows: DataRow[] = [
   { month: "2026-01", region: "North", channel: "Enterprise", revenue: 184000, orders: 212, churn_rate: 0.041, satisfaction: 8.6 },
@@ -91,6 +93,41 @@ function buildProfile(rows: DataRow[]): Profile {
   return { rows: rows.length, columns: columns.length, missingCells: columnProfiles.reduce((sum, column) => sum + column.missing, 0), duplicateRows: rows.length - new Set(rows.map((row) => JSON.stringify(row))).size, numericColumns: columnProfiles.filter((column) => column.kind === "number").length, columnProfiles }
 }
 
+function applyCleaningOperations(source: DataRow[], operations: CleaningOperation[]) {
+  return operations.reduce((current, operation) => {
+    if (operation.type === "drop_duplicates") {
+      const seen = new Set<string>()
+      return current.filter((row) => { const key = JSON.stringify(row); if (seen.has(key)) return false; seen.add(key); return true })
+    }
+    if (operation.type === "trim_text") return current.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === "string" ? value.trim() : value])))
+    if (!operation.column) return current
+    if (operation.type === "drop_missing") return current.filter((row) => !isMissing(row[operation.column as string]))
+    if (operation.type === "fill_missing") {
+      const present = current.map((row) => row[operation.column as string]).filter((value) => !isMissing(value))
+      let replacement: Cell = null
+      if (operation.strategy === "mode") {
+        const counts = new Map<string, { value: Cell; count: number }>()
+        present.forEach((value) => { const key = String(value); counts.set(key, { value, count: (counts.get(key)?.count ?? 0) + 1 }) })
+        replacement = [...counts.values()].sort((a, b) => b.count - a.count)[0]?.value ?? null
+      } else {
+        const values = present.filter((value): value is number => typeof value === "number").sort((a, b) => a - b)
+        if (values.length) replacement = operation.strategy === "mean" ? values.reduce((sum, value) => sum + value, 0) / values.length : values.length % 2 ? values[Math.floor(values.length / 2)] : (values[values.length / 2 - 1] + values[values.length / 2]) / 2
+        else {
+          const counts = new Map<string, { value: Cell; count: number }>()
+          present.forEach((value) => { const key = String(value); counts.set(key, { value, count: (counts.get(key)?.count ?? 0) + 1 }) })
+          replacement = [...counts.values()].sort((a, b) => b.count - a.count)[0]?.value ?? null
+        }
+      }
+      return current.map((row) => isMissing(row[operation.column as string]) ? { ...row, [operation.column as string]: replacement } : row)
+    }
+    const values = current.map((row) => row[operation.column as string]).filter((value): value is number => typeof value === "number").sort((a, b) => a - b)
+    if (values.length < 4) return current
+    const quantile = (p: number) => values[Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * p)))]
+    const q1 = quantile(.25), q3 = quantile(.75), iqr = q3 - q1, lower = q1 - 1.5 * iqr, upper = q3 + 1.5 * iqr
+    return current.map((row) => typeof row[operation.column as string] === "number" ? { ...row, [operation.column as string]: Math.min(upper, Math.max(lower, row[operation.column as string] as number)) } : row)
+  }, source.map((row) => ({ ...row })))
+}
+
 function correlation(xs: number[], ys: number[]) {
   if (xs.length < 3 || xs.length !== ys.length) return 0
   const meanX = xs.reduce((a, b) => a + b, 0) / xs.length, meanY = ys.reduce((a, b) => a + b, 0) / ys.length
@@ -141,15 +178,35 @@ function KindBadge({ kind }: { kind: ColumnKind }) {
   return <Badge variant="outline" className="border-slate-200 bg-slate-50 font-normal text-slate-600">{labels[kind]}</Badge>
 }
 
+function experimentMetric(experiment: ExperimentRecord) {
+  const key = experiment.task === "classification" ? "f1_weighted" : "mae"
+  return { key: experiment.task === "classification" ? "F1" : "MAE", value: experiment.metrics[key], baseline: experiment.baselineMetrics[key] }
+}
+
+function experimentImprovement(experiment: ExperimentRecord) {
+  const metric = experimentMetric(experiment)
+  if (!Number.isFinite(metric.value) || !Number.isFinite(metric.baseline) || metric.baseline === 0) return "—"
+  const change = experiment.task === "classification" ? ((metric.value - metric.baseline) / Math.abs(metric.baseline)) * 100 : ((metric.baseline - metric.value) / Math.abs(metric.baseline)) * 100
+  return (change >= 0 ? "+" : "") + change.toFixed(1) + "%"
+}
+
 export default function Home() {
-  const [rows, setRows] = useState<DataRow[]>(demoRows), [datasetName, setDatasetName] = useState("SaaS 经营指标 · 示例"), [status, setStatus] = useState("示例数据已就绪"), [loading, setLoading] = useState(false)
+  const [rawRows, setRawRows] = useState<DataRow[]>(demoRows), [datasetName, setDatasetName] = useState("SaaS 经营指标 · 示例"), [status, setStatus] = useState("示例数据已就绪"), [loading, setLoading] = useState(false)
   const [prompt, setPrompt] = useState("总结数据质量，并指出最值得关注的指标"), [result, setResult] = useState<AnalysisResult>(() => analyzeRows(demoRows, buildProfile(demoRows), "总结"))
   const [dimension, setDimension] = useState("month"), [measure, setMeasure] = useState("revenue"), [aggregation, setAggregation] = useState("sum"), [chartType, setChartType] = useState<"bar" | "line">("line")
   const [modelTask, setModelTask] = useState<ModelTask>("regression"), [modelChoice, setModelChoice] = useState<ModelChoice>("auto"), [target, setTarget] = useState("revenue"), [modelPlan, setModelPlan] = useState<AnalysisResult | null>(null)
+  const [cleaningOperations, setCleaningOperations] = useState<CleaningOperation[]>([])
+  const [cleaningType, setCleaningType] = useState<CleaningType>("fill_missing"), [cleaningColumn, setCleaningColumn] = useState("churn_rate"), [cleaningStrategy, setCleaningStrategy] = useState<"mean" | "median" | "mode">("median")
+  const [experiments, setExperiments] = useState<ExperimentRecord[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const rows = useMemo(() => applyCleaningOperations(rawRows, cleaningOperations), [rawRows, cleaningOperations])
+  const rawProfile = useMemo(() => buildProfile(rawRows), [rawRows])
   const profile = useMemo(() => buildProfile(rows), [rows]), columns = profile.columnProfiles.map((column) => column.name), dimensions = profile.columnProfiles.filter((column) => column.kind !== "number"), measures = profile.columnProfiles.filter((column) => column.kind === "number")
 
-  useEffect(() => { if (!columns.includes(dimension)) setDimension(dimensions[0]?.name ?? columns[0] ?? ""); if (!columns.includes(measure)) setMeasure(measures[0]?.name ?? "__count"); if (!columns.includes(target)) setTarget(measures[0]?.name ?? columns[0] ?? "") }, [columns.join("|"), dimension, measure, target])
+  useEffect(() => { if (!columns.includes(dimension)) setDimension(dimensions[0]?.name ?? columns[0] ?? ""); if (!columns.includes(measure)) setMeasure(measures[0]?.name ?? "__count"); if (!columns.includes(target)) setTarget(measures[0]?.name ?? columns[0] ?? ""); if (!columns.includes(cleaningColumn)) setCleaningColumn(columns[0] ?? "") }, [columns.join("|"), dimension, measure, target, cleaningColumn])
+  useEffect(() => {
+    try { setExperiments(JSON.parse(localStorage.getItem("lenslab-experiments-v1") ?? "[]") as ExperimentRecord[]) } catch { setExperiments([]) }
+  }, [])
 
   const chartData = useMemo(() => {
     if (!dimension) return []
@@ -159,7 +216,7 @@ export default function Home() {
   }, [rows, dimension, measure, aggregation])
   const qualityScore = Math.max(0, Math.round(100 - (profile.missingCells / Math.max(profile.rows * profile.columns, 1)) * 80 - (profile.duplicateRows / Math.max(profile.rows, 1)) * 20))
 
-  function loadDemo() { setRows(demoRows); setDatasetName("SaaS 经营指标 · 示例"); setStatus("示例数据已就绪"); setResult(analyzeRows(demoRows, buildProfile(demoRows), "总结")); return { rows: demoRows.length, columns: Object.keys(demoRows[0]).length } }
+  function loadDemo() { setRawRows(demoRows); setCleaningOperations([]); setDatasetName("SaaS 经营指标 · 示例"); setStatus("示例数据已就绪"); setResult(analyzeRows(demoRows, buildProfile(demoRows), "总结")); return { rows: demoRows.length, columns: Object.keys(demoRows[0]).length } }
   async function readFile(file: File) {
     setLoading(true); setStatus(`正在读取 ${file.name}`)
     try {
@@ -168,19 +225,41 @@ export default function Home() {
       else if (/\.xlsx?$/i.test(file.name)) { const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" }), sheet = workbook.Sheets[workbook.SheetNames[0]], raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: true }); parsed = raw.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, coerceCell(value)]))) }
       else throw new Error("目前支持 CSV、XLSX 和 XLS")
       if (!parsed.length) throw new Error("文件中没有可读取的数据行")
-      setRows(parsed); setDatasetName(file.name); setStatus(`已在浏览器中加载 ${parsed.length} 行`); setResult(analyzeRows(parsed, buildProfile(parsed), "总结")); setModelPlan(null)
+      setRawRows(parsed); setCleaningOperations([]); setDatasetName(file.name); setStatus(`已在浏览器中加载 ${parsed.length} 行`); setResult(analyzeRows(parsed, buildProfile(parsed), "总结")); setModelPlan(null)
     } catch (error) { setStatus(error instanceof Error ? error.message : "文件读取失败") }
     finally { setLoading(false); if (inputRef.current) inputRef.current.value = "" }
   }
   function runAnalysis(nextPrompt = prompt) { const next = analyzeRows(rows, profile, nextPrompt); setPrompt(nextPrompt); setResult(next); return next }
   function changeModelTask(nextTask: ModelTask) { setModelTask(nextTask); setModelChoice("auto"); setModelPlan(null) }
   function changeModelChoice(nextChoice: ModelChoice) { setModelChoice(nextChoice); setModelPlan(null) }
+  function addCleaningOperation() {
+    const needsColumn = !["drop_duplicates", "trim_text"].includes(cleaningType)
+    if (needsColumn && !cleaningColumn) return
+    const columnLabel = cleaningColumn || "全部字段"
+    const labels: Record<CleaningType, string> = {
+      drop_duplicates: "删除完全重复的记录",
+      trim_text: "清理全部文本字段首尾空格",
+      drop_missing: `删除 ${columnLabel} 为空的记录`,
+      fill_missing: `用${cleaningStrategy === "mean" ? "均值" : cleaningStrategy === "mode" ? "众数" : "中位数"}填补 ${columnLabel}`,
+      clip_outliers: `按 IQR 范围缩尾 ${columnLabel}`,
+    }
+    setCleaningOperations((current) => [...current, { id: crypto.randomUUID(), type: cleaningType, label: labels[cleaningType], column: needsColumn ? cleaningColumn : undefined, strategy: cleaningType === "fill_missing" ? cleaningStrategy : undefined }])
+    setModelPlan(null)
+  }
+  function recordExperiment(experiment: ExperimentRecord) {
+    setExperiments((current) => {
+      const next = [experiment, ...current].slice(0, 30)
+      try { localStorage.setItem("lenslab-experiments-v1", JSON.stringify(next)) } catch { /* Browser storage can be unavailable in private contexts. */ }
+      return next
+    })
+  }
+  function clearExperiments() { setExperiments([]); try { localStorage.removeItem("lenslab-experiments-v1") } catch { /* Keep the in-memory reset. */ } }
   function createModelPlan() {
     const targetProfile = profile.columnProfiles.find((column) => column.name === target), taskLabel = modelTask === "classification" ? "分类" : modelTask === "forecast" ? "时间序列预测" : "回归"
     const selectedLabel = modelLabel(modelTask, modelChoice)
     setModelPlan({ title: `${taskLabel}验证方案`, summary: `目标字段为 ${target || "未选择"}；训练策略为“${selectedLabel}”，并与相同切分下的朴素基线比较。`, bullets: [modelTask === "forecast" ? "按时间顺序留后切分，禁止随机打乱。" : "使用固定随机种子的独立测试集，预处理仅在训练集拟合。", targetProfile?.missing ? `目标字段有 ${targetProfile.missing} 个缺失值，训练前将排除目标缺失行。` : "目标字段未发现缺失值。", modelTask === "classification" ? "主指标使用加权 F1，并同时报告准确率与平衡准确率。" : "主指标使用 MAE，并同时报告 RMSE 与 R²。"], method: `任务、目标字段、${selectedLabel}与数据质量联合检查`, confidence: "训练前方案，尚未拟合模型" })
   }
-  function exportReport() { const payload = { generatedAt: new Date().toISOString(), dataset: datasetName, profile, analysis: result, chart: { dimension, measure, aggregation, data: chartData }, modeling: { task: modelTask, target, model: modelChoice, modelLabel: modelLabel(modelTask, modelChoice), plan: modelPlan }, note: "All calculations were executed locally in the browser." }, url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })), anchor = document.createElement("a"); anchor.href = url; anchor.download = `${datasetName.replace(/[^\w\u4e00-\u9fa5]+/g, "-")}-analysis.json`; anchor.click(); URL.revokeObjectURL(url) }
+  function exportReport() { const payload = { generatedAt: new Date().toISOString(), dataset: datasetName, profile, cleaning: cleaningOperations, analysis: result, chart: { dimension, measure, aggregation, data: chartData }, modeling: { task: modelTask, target, model: modelChoice, modelLabel: modelLabel(modelTask, modelChoice), plan: modelPlan, experiments }, note: "All calculations were executed locally in the browser." }, url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })), anchor = document.createElement("a"); anchor.href = url; anchor.download = `${datasetName.replace(/[^\w\u4e00-\u9fa5]+/g, "-")}-analysis.json`; anchor.click(); URL.revokeObjectURL(url) }
 
   const webMcpRef = useRef({ loadDemo, runAnalysis, setDimension, setMeasure, setAggregation }); webMcpRef.current = { loadDemo, runAnalysis, setDimension, setMeasure, setAggregation }
   useEffect(() => {
@@ -293,8 +372,10 @@ export default function Home() {
             <TabsList className="workspace-tab-list">
               <TabsTrigger value="overview">概览</TabsTrigger>
               <TabsTrigger value="data">数据表</TabsTrigger>
+              <TabsTrigger value="prepare">数据准备</TabsTrigger>
               <TabsTrigger value="chart">图表</TabsTrigger>
               <TabsTrigger value="model">建模</TabsTrigger>
+              <TabsTrigger value="experiments">实验</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="workspace-content">
@@ -338,6 +419,33 @@ export default function Home() {
               </section>
             </TabsContent>
 
+            <TabsContent value="prepare" className="workspace-content">
+              <div className="editor-grid">
+                <aside className="inspector">
+                  <div className="inspector-title"><ListChecks className="size-4" />添加清洗步骤</div>
+                  <label className="control-label">操作<NativeSelect value={cleaningType} onChange={(e) => setCleaningType(e.target.value as CleaningType)}><NativeSelectOption value="fill_missing">填补缺失值</NativeSelectOption><NativeSelectOption value="drop_missing">删除缺失记录</NativeSelectOption><NativeSelectOption value="drop_duplicates">删除重复记录</NativeSelectOption><NativeSelectOption value="trim_text">清理文本空格</NativeSelectOption><NativeSelectOption value="clip_outliers">IQR 异常值缩尾</NativeSelectOption></NativeSelect></label>
+                  {!["drop_duplicates", "trim_text"].includes(cleaningType) ? <label className="control-label">字段<NativeSelect value={cleaningColumn} onChange={(e) => setCleaningColumn(e.target.value)}>{rawProfile.columnProfiles.map((column) => <NativeSelectOption value={column.name} key={column.name}>{column.name}</NativeSelectOption>)}</NativeSelect></label> : null}
+                  {cleaningType === "fill_missing" ? <label className="control-label">填补方法<NativeSelect value={cleaningStrategy} onChange={(e) => setCleaningStrategy(e.target.value as "mean" | "median" | "mode")}><NativeSelectOption value="median">中位数</NativeSelectOption><NativeSelectOption value="mean">均值</NativeSelectOption><NativeSelectOption value="mode">众数</NativeSelectOption></NativeSelect></label> : null}
+                  <Button onClick={addCleaningOperation} className="mt-4 w-full"><Sparkles className="size-4" />应用步骤</Button>
+                  <p className="inspector-note">每一步都从原始数据重新计算，可以撤销，不会覆盖上传文件。</p>
+                </aside>
+                <section className="surface overflow-hidden">
+                  <div className="surface-header">
+                    <div><p className="surface-title">清洗流水线</p><p className="surface-caption">按顺序执行 · 保留完整操作记录</p></div>
+                    <div className="flex gap-2"><Button size="sm" variant="outline" disabled={!cleaningOperations.length} onClick={() => setCleaningOperations((current) => current.slice(0, -1))}><Undo2 className="size-4" />撤销</Button><Button size="sm" variant="ghost" disabled={!cleaningOperations.length} onClick={() => setCleaningOperations([])}><RotateCcw className="size-4" />重置</Button></div>
+                  </div>
+                  <div className="cleaning-summary">
+                    <div><span>原始记录</span><strong>{rawProfile.rows}</strong></div>
+                    <ChevronRight className="size-4 text-slate-300" />
+                    <div><span>当前记录</span><strong>{profile.rows}</strong></div>
+                    <div><span>缺失单元格</span><strong>{rawProfile.missingCells} → {profile.missingCells}</strong></div>
+                    <div><span>步骤</span><strong>{cleaningOperations.length}</strong></div>
+                  </div>
+                  {cleaningOperations.length ? <div className="divide-y divide-slate-100">{cleaningOperations.map((operation, index) => <div key={operation.id} className="cleaning-step"><span className="cleaning-index">{String(index + 1).padStart(2, "0")}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-700">{operation.label}</p><p className="mt-1 text-xs text-slate-400">{operation.type}{operation.column ? " · " + operation.column : ""}</p></div><button onClick={() => setCleaningOperations((current) => current.filter((item) => item.id !== operation.id))} className="icon-button" aria-label={"删除步骤 " + operation.label}><Trash2 className="size-4" /></button></div>)}</div> : <div className="grid min-h-[300px] place-items-center text-center"><div><ListChecks className="mx-auto size-8 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-600">还没有清洗步骤</p><p className="mt-1 text-xs text-slate-400">从左侧添加操作，结果会即时更新。</p></div></div>}
+                </section>
+              </div>
+            </TabsContent>
+
             <TabsContent value="chart" className="workspace-content">
               <div className="editor-grid">
                 <aside className="inspector">
@@ -367,7 +475,17 @@ export default function Home() {
                   {modelPlan ? <div className="p-5"><h3 className="text-lg font-semibold text-slate-900">{modelPlan.title}</h3><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{modelPlan.summary}</p><div className="mt-5 divide-y divide-slate-100 border-y border-slate-200">{modelPlan.bullets.map((item, index) => <div key={item} className="flex gap-3 py-3 text-sm text-slate-700"><span className="text-xs tabular-nums text-slate-400">{String(index + 1).padStart(2, "0")}</span>{item}</div>)}</div><div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500"><span className="rounded border border-slate-200 bg-slate-50 px-2 py-1">{modelPlan.method}</span><span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">{modelPlan.confidence}</span></div></div> : <div className="grid min-h-[320px] place-items-center text-center"><div><BrainCircuit className="mx-auto size-8 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-600">尚未生成验证方案</p><p className="mt-1 text-xs text-slate-400">在左侧选择任务、模型和目标字段。</p></div></div>}
                 </section>
               </div>
-              <PythonModelLab rows={rows} target={target} task={modelTask} modelChoice={modelChoice} />
+              <PythonModelLab rows={rows} target={target} task={modelTask} modelChoice={modelChoice} datasetName={datasetName} onExperiment={recordExperiment} />
+            </TabsContent>
+
+            <TabsContent value="experiments" className="workspace-content">
+              <section className="surface overflow-hidden">
+                <div className="surface-header">
+                  <div><p className="surface-title">实验历史与模型对比</p><p className="surface-caption">自动保存最近 30 次成功训练，仅保存在当前浏览器</p></div>
+                  <Button size="sm" variant="ghost" disabled={!experiments.length} onClick={clearExperiments}><Trash2 className="size-4" />清空历史</Button>
+                </div>
+                {experiments.length ? <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>运行时间</TableHead><TableHead>数据集</TableHead><TableHead>任务 / 目标</TableHead><TableHead>模型</TableHead><TableHead>切分</TableHead><TableHead className="text-right">主指标</TableHead><TableHead className="text-right">相对基线</TableHead><TableHead className="text-right">样本 / 特征</TableHead></TableRow></TableHeader><TableBody>{experiments.map((experiment) => { const metric = experimentMetric(experiment); return <TableRow key={experiment.id}><TableCell className="whitespace-nowrap text-xs text-slate-500">{new Date(experiment.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</TableCell><TableCell className="max-w-40 truncate text-slate-700">{experiment.datasetName}</TableCell><TableCell><span className="block text-slate-700">{experiment.task === "classification" ? "分类" : experiment.task === "forecast" ? "预测" : "回归"}</span><span className="text-xs text-slate-400">{experiment.target}</span></TableCell><TableCell className="font-medium text-slate-800">{experiment.modelName}</TableCell><TableCell className="max-w-52 text-xs leading-5 text-slate-500">{experiment.split}</TableCell><TableCell className="text-right tabular-nums"><span className="mr-1 text-xs text-slate-400">{metric.key}</span>{fmt(metric.value, 3)}</TableCell><TableCell className="text-right font-medium text-emerald-700">{experimentImprovement(experiment)}</TableCell><TableCell className="text-right tabular-nums text-slate-500">{experiment.rowsUsed} / {experiment.featureCount}</TableCell></TableRow>})}</TableBody></Table></div> : <div className="grid min-h-[360px] place-items-center text-center"><div><FlaskConical className="mx-auto size-8 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-600">还没有实验记录</p><p className="mt-1 text-xs text-slate-400">完成一次真实训练后，结果会自动出现在这里。</p></div></div>}
+              </section>
             </TabsContent>
           </Tabs>
         </section>
