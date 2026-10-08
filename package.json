@@ -4,12 +4,6 @@
   "description": "A browser-first data analysis and machine-learning workbench with local Python execution.",
   "private": true,
   "license": "MIT",
-  "author": "osiris11111111",
-  "homepage": "https://data-science-workbench.taotjd.chatgpt.site/",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/osiris11111111/data-science-workbench.git"
-  },
   "keywords": [
     "data-analysis",
     "data-science",

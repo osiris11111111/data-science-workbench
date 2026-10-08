@@ -14,7 +14,6 @@ import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { LlmInsightPanel } from "@/components/llm-insight-panel"
 import { PythonModelLab, type ExperimentRecord } from "@/components/python-model-lab"
 import { MODEL_OPTIONS, modelLabel, type ModelChoice, type ModelTask } from "@/lib/model-catalog"
 
@@ -510,11 +509,10 @@ export default function Home() {
               <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="描述你想了解的问题…" className="min-h-24 resize-none bg-white text-sm" />
               <Button onClick={() => runAnalysis()} className="mt-2 w-full"><Play className="size-4 fill-current" />运行本地分析</Button>
             </section>
-            <LlmInsightPanel prompt={prompt} context={{ dataset: datasetName, profile, currentAnalysis: result }} />
             <section className="assistant-section border-t border-slate-200 pt-4">
               <div className="flex items-center justify-between text-xs"><span className="text-slate-500">可复现性检查</span><span className="font-medium text-emerald-700">4 / 4</span></div>
               <Progress value={100} className="mt-2 h-1" />
-              <p className="mt-3 text-xs leading-5 text-slate-500">统计在浏览器执行；模型在隔离 Worker 训练；LLM 只接收统计摘要。</p>
+              <p className="mt-3 text-xs leading-5 text-slate-500">统计与分析在浏览器执行；模型在隔离 Worker 中训练；不调用外部 LLM 或个人 API。</p>
             </section>
           </div>
         </aside>

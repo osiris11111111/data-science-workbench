@@ -5,15 +5,11 @@
 </p>
 
 <p align="center">
-  <a href="https://data-science-workbench.taotjd.chatgpt.site/"><img alt="Live demo" src="https://img.shields.io/badge/Live%20Demo-在线体验-2563eb"></a>
-  <a href="https://github.com/osiris11111111/data-science-workbench/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/osiris11111111/data-science-workbench/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-16a34a.svg"></a>
   <img alt="Local-first" src="https://img.shields.io/badge/Python-浏览器本地执行-f59e0b">
 </p>
 
 <p align="center">
-  <a href="https://data-science-workbench.taotjd.chatgpt.site/"><strong>在线体验</strong></a>
-  ·
   <a href="#本地运行">本地运行</a>
   ·
   <a href="#支持的模型与指标">模型与指标</a>
@@ -31,7 +27,7 @@
 
 - 左侧管理数据集、字段类型与质量信息。
 - 中间完成图表配置、清洗方案、建模与实验比较。
-- 右侧提供基于统计摘要的 AI 洞察，避免把原始数据无边界地发送给模型。
+- 右侧提供基于统计摘要的本地分析建议，不向外部模型发送数据。
 - Python 训练在独立 Web Worker 中通过 Pyodide 运行，页面交互与计算相互隔离。
 
 ## 功能流程
@@ -45,7 +41,7 @@ flowchart LR
     E --> F[Python Pipeline 训练]
     F --> G[基线对比、指标与诊断]
     G --> H[保存实验记录 / 导出 JSON 报告]
-    B --> I[AI 数据洞察]
+    B --> I[本地分析建议]
 ```
 
 ## 核心能力
@@ -57,7 +53,6 @@ flowchart LR
 | 数据清洗 | 删除重复、文本去空格、删除缺失、均值/中位数/众数填补、IQR 缩尾 |
 | 可视化 | 维度、指标、聚合方式与柱状图/折线图交互配置 |
 | 分析助手 | 数据质量、相关性、趋势、分组分布与建模任务建议 |
-| LLM 洞察 | 可选 OpenAI Responses API；服务端读取密钥；仅提交结构化摘要 |
 | 模型训练 | Pyodide + pandas + scikit-learn，独立 Worker 中真实训练 |
 | 模型评估 | 朴素基线、候选模型比较、Top 特征、残差图或混淆矩阵 |
 | 实验管理 | 最近 30 次实验保存在浏览器 localStorage；支持 JSON 报告导出 |
@@ -110,18 +105,12 @@ flowchart TB
       Py[Pyodide]
       ML[pandas + scikit-learn]
       Store[localStorage 实验记录]
+      Insights[本地分析助手]
       UI --> Parser --> Profile
+      Profile --> Insights
       UI --> Worker --> Py --> ML
       UI --> Store
     end
-
-    subgraph Server[Cloudflare / Vinext 服务端]
-      Route[/api/llm]
-      OpenAI[OpenAI Responses API]
-      Route --> OpenAI
-    end
-
-    UI -->|统计摘要，可选| Route
 ```
 
 主要技术：Next.js 16、React 19、TypeScript、Tailwind CSS 4、Recharts、SheetJS、Pyodide、pandas、scikit-learn、Vinext 与 Cloudflare Workers。
@@ -137,7 +126,7 @@ flowchart TB
 ### 启动
 
 ```bash
-git clone https://github.com/osiris11111111/data-science-workbench.git
+git clone <repository-url>
 cd data-science-workbench
 npm ci
 npm run dev -- --port 5177
@@ -151,21 +140,6 @@ Windows 也可以直接运行：
 powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
 ```
 
-### 可选：启用 LLM 洞察
-
-```bash
-cp .env.example .env.local
-```
-
-然后在 `.env.local` 中设置：
-
-```dotenv
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-5.5
-```
-
-密钥只由服务端 API 路由读取；不要把 `.env.local` 提交到 Git。
-
 ## 验证与测试
 
 每次推送和 Pull Request 都通过 GitHub Actions 执行：
@@ -176,12 +150,12 @@ npm run lint
 npm run build
 ```
 
-CI 徽章展示当前 `main` 分支的实际结果。建模结果还会记录 Python、pandas 和 scikit-learn 版本、切分方式、样本数与随机种子，方便复核。
+建模结果会记录 Python、pandas 和 scikit-learn 版本、切分方式、样本数与随机种子，方便复核。
 
 ## 项目结构
 
 ```text
-app/                         页面、样式与 LLM API
+app/                         页面与样式
 components/                  工作台与模型评估界面
 lib/model-catalog.ts         任务与模型目录
 public/python-worker.js      Pyodide / scikit-learn 训练后端
@@ -192,9 +166,7 @@ docs/                        产品界面资源
 
 ## 部署
 
-当前在线版本：<https://data-science-workbench.taotjd.chatgpt.site/>
-
-项目适配 Vinext 与 Cloudflare Workers。生产环境如需 LLM 洞察，应通过托管平台的 Secret/Environment Variables 配置 `OPENAI_API_KEY`，不要将密钥写入仓库。
+项目适配 Vinext 与 Cloudflare Workers。当前版本不依赖外部 LLM 服务或个人 API Key。
 
 ## 路线图
 

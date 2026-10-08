@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="860" viewBox="0 0 1440 860" role="img" aria-labelledby="title desc">
   <title id="title">LensLab Data Science Workbench</title>
-  <desc id="desc">A three-column data analysis interface with dataset fields, charts, model metrics, and an AI insights panel.</desc>
+  <desc id="desc">A three-column data analysis interface with dataset fields, charts, model metrics, and a local insights panel.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eef4ff"/><stop offset="1" stop-color="#f8fafc"/></linearGradient>
     <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#60a5fa"/></linearGradient>
@@ -90,8 +90,8 @@
 
   <rect x="1105" y="92" width="290" height="734" fill="#fff"/>
   <line x1="1105" y1="92" x2="1105" y2="826" class="line"/>
-  <text x="1128" y="128" class="t heading">AI 分析助手</text>
-  <text x="1128" y="150" class="muted tiny">基于统计摘要生成洞察</text>
+  <text x="1128" y="128" class="t heading">本地分析助手</text>
+  <text x="1128" y="150" class="muted tiny">基于统计摘要生成建议</text>
   <rect x="1128" y="179" width="244" height="156" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
   <text x="1146" y="207" class="t label">经营趋势摘要</text>
   <text x="1146" y="234" class="muted tiny">收入整体上升，最近一期较首期</text>
