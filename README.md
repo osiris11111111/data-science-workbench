@@ -36,7 +36,7 @@
 
 ## 功能流程
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     A[导入 CSV / XLSX / XLS] --> B[字段识别与数据画像]
     B --> C[缺失值、重复值与异常值处理]
@@ -46,7 +46,7 @@ flowchart LR
     F --> G[基线对比、指标与诊断]
     G --> H[保存实验记录 / 导出 JSON 报告]
     B --> I[AI 数据洞察]
-\`\`\`
+```
 
 ## 核心能力
 
@@ -76,7 +76,7 @@ flowchart LR
 
 - 回归与预测：MAE、RMSE、R²，均值基线，真实值–预测值散点图，残差均值与标准差。
 - 分类：Accuracy、Balanced Accuracy、Weighted F1，多数类基线，混淆矩阵。
-- 所有任务：固定 \`seed=42\`，相同测试集上的基线比较，最多展示 10 个重要特征。
+- 所有任务：固定 `seed=42`，相同测试集上的基线比较，最多展示 10 个重要特征。
 - 普通回归/分类使用固定随机种子 80/20 切分；预测任务按识别出的日期字段进行 80/20 时间留后切分。
 
 ### 防泄漏预处理
@@ -84,7 +84,7 @@ flowchart LR
 - 数值特征：训练集内中位数填补 + 标准化。
 - 类别特征：训练集内众数填补 + One-Hot 编码，单字段最多 40 个类别。
 - 唯一值比例超过 95% 的非数值字段自动排除，降低 ID 泄漏风险。
-- 预处理与模型封装在同一 scikit-learn \`Pipeline\` 中，只在训练集拟合。
+- 预处理与模型封装在同一 scikit-learn `Pipeline` 中，只在训练集拟合。
 
 ## 数据规模与当前边界
 
@@ -100,7 +100,7 @@ flowchart LR
 
 ## 技术架构
 
-\`\`\`mermaid
+```mermaid
 flowchart TB
     subgraph Browser[浏览器]
       UI[Next.js / React 工作台]
@@ -122,7 +122,7 @@ flowchart TB
     end
 
     UI -->|统计摘要，可选| Route
-\`\`\`
+```
 
 主要技术：Next.js 16、React 19、TypeScript、Tailwind CSS 4、Recharts、SheetJS、Pyodide、pandas、scikit-learn、Vinext 与 Cloudflare Workers。
 
@@ -130,57 +130,57 @@ flowchart TB
 
 ### 环境要求
 
-- Node.js \`>=22.13.0\`
+- Node.js `>=22.13.0`
 - npm
 - 首次使用 Python 建模时需要网络连接，以下载 Pyodide 与 Python 包
 
 ### 启动
 
-\`\`\`bash
+```bash
 git clone https://github.com/osiris11111111/data-science-workbench.git
 cd data-science-workbench
 npm ci
 npm run dev -- --port 5177
-\`\`\`
+```
 
 打开 <http://127.0.0.1:5177/>。
 
 Windows 也可以直接运行：
 
-\`\`\`powershell
+```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
-\`\`\`
+```
 
 ### 可选：启用 LLM 洞察
 
-\`\`\`bash
+```bash
 cp .env.example .env.local
-\`\`\`
+```
 
-然后在 \`.env.local\` 中设置：
+然后在 `.env.local` 中设置：
 
-\`\`\`dotenv
+```dotenv
 OPENAI_API_KEY=your_key_here
 OPENAI_MODEL=gpt-5.5
-\`\`\`
+```
 
-密钥只由服务端 API 路由读取；不要把 \`.env.local\` 提交到 Git。
+密钥只由服务端 API 路由读取；不要把 `.env.local` 提交到 Git。
 
 ## 验证与测试
 
 每次推送和 Pull Request 都通过 GitHub Actions 执行：
 
-\`\`\`bash
+```bash
 npm ci
 npm run lint
 npm run build
-\`\`\`
+```
 
-CI 徽章展示当前 \`main\` 分支的实际结果。建模结果还会记录 Python、pandas 和 scikit-learn 版本、切分方式、样本数与随机种子，方便复核。
+CI 徽章展示当前 `main` 分支的实际结果。建模结果还会记录 Python、pandas 和 scikit-learn 版本、切分方式、样本数与随机种子，方便复核。
 
 ## 项目结构
 
-\`\`\`text
+```text
 app/                         页面、样式与 LLM API
 components/                  工作台与模型评估界面
 lib/model-catalog.ts         任务与模型目录
@@ -188,13 +188,13 @@ public/python-worker.js      Pyodide / scikit-learn 训练后端
 scripts/start-local.ps1      Windows 本地启动项
 docs/                        产品界面资源
 .github/workflows/ci.yml     持续集成
-\`\`\`
+```
 
 ## 部署
 
 当前在线版本：<https://data-science-workbench.taotjd.chatgpt.site/>
 
-项目适配 Vinext 与 Cloudflare Workers。生产环境如需 LLM 洞察，应通过托管平台的 Secret/Environment Variables 配置 \`OPENAI_API_KEY\`，不要将密钥写入仓库。
+项目适配 Vinext 与 Cloudflare Workers。生产环境如需 LLM 洞察，应通过托管平台的 Secret/Environment Variables 配置 `OPENAI_API_KEY`，不要将密钥写入仓库。
 
 ## 路线图
 
